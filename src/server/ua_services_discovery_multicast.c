@@ -12,7 +12,7 @@
 
 #if defined(UA_ENABLE_DISCOVERY) && defined(UA_ENABLE_DISCOVERY_MULTICAST)
 
-#ifdef UA_ENABLE_MULTITHREADING
+#if UA_MULTITHREADING >= 200
 
 static void *
 multicastWorkerLoop(UA_Server *server) {
@@ -72,7 +72,7 @@ multicastListenStop(UA_Server* server) {
     return UA_STATUSCODE_BADNOTIMPLEMENTED;
 }
 
-# endif /* UA_ENABLE_MULTITHREADING */
+# endif /* UA_MULTITHREADING */
 
 static UA_StatusCode
 addMdnsRecordForNetworkLayer(UA_Server *server, const UA_String *appName,
@@ -110,7 +110,7 @@ void startMulticastDiscoveryServer(UA_Server *server) {
     /* find any other server on the net */
     UA_Discovery_multicastQuery(server);
 
-# ifdef UA_ENABLE_MULTITHREADING
+#if UA_MULTITHREADING >= 200
     multicastListenStart(server);
 # endif
 }
@@ -130,7 +130,7 @@ stopMulticastDiscoveryServer(UA_Server *server) {
                      "Could not get hostname for multicast discovery.");
     }
 
-# ifdef UA_ENABLE_MULTITHREADING
+#if UA_MULTITHREADING >= 200
     multicastListenStop(server);
 # else
     // send out last package with TTL = 0
@@ -154,6 +154,8 @@ filterServerRecord(size_t serverCapabilityFilterSize, UA_String *serverCapabilit
 void Service_FindServersOnNetwork(UA_Server *server, UA_Session *session,
                                   const UA_FindServersOnNetworkRequest *request,
                                   UA_FindServersOnNetworkResponse *response) {
+    UA_LOCK_ASSERT(server->serviceMutex, 1);
+
     if (!server->config.discovery.mdnsEnable) {
         response->responseHeader.serviceResult = UA_STATUSCODE_BADNOTIMPLEMENTED;
         return;
@@ -255,8 +257,10 @@ void
 UA_Server_setServerOnNetworkCallback(UA_Server *server,
                                      UA_Server_serverOnNetworkCallback cb,
                                      void* data) {
+    UA_LOCK(server->serviceMutex);
     server->discoveryManager.serverOnNetworkCallback = cb;
     server->discoveryManager.serverOnNetworkCallbackData = data;
+    UA_UNLOCK(server->serviceMutex);
 }
 
 static void

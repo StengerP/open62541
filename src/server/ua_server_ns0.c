@@ -100,7 +100,7 @@ UA_Server_createNS0_base(UA_Server *server) {
 
     UA_ReferenceTypeAttributes aggregates_attr = UA_ReferenceTypeAttributes_default;
     aggregates_attr.displayName = UA_LOCALIZEDTEXT("", "Aggregates");
-    aggregates_attr.isAbstract = false;
+    aggregates_attr.isAbstract = true;
     aggregates_attr.symmetric = false;
     aggregates_attr.inverseName = UA_LOCALIZEDTEXT("", "AggregatedBy");
     ret |= addNode_raw(server, UA_NODECLASS_REFERENCETYPE, UA_NS0ID_AGGREGATES, "Aggregates",
@@ -110,7 +110,7 @@ UA_Server_createNS0_base(UA_Server *server) {
                          UA_NS0ID_HIERARCHICALREFERENCES, true, false, UA_NS0ID_REFERENCES);
 
     ret |= addReferenceTypeNode(server, "NonHierarchicalReferences", NULL,
-                         UA_NS0ID_NONHIERARCHICALREFERENCES, true, false, UA_NS0ID_REFERENCES);
+                         UA_NS0ID_NONHIERARCHICALREFERENCES, true, true, UA_NS0ID_REFERENCES);
 
     ret |= addReferenceTypeNode(server, "HasChild", NULL, UA_NS0ID_HASCHILD,
                          true, false, UA_NS0ID_HIERARCHICALREFERENCES);
@@ -478,7 +478,7 @@ writeNamespaces(UA_Server *server, const UA_NodeId *sessionId, void *sessionCont
 
     /* ensure that the uri for ns1 is set up from the app description */
     setupNs1Uri(server);
-    
+
     /* Test if the existing namespaces are unchanged */
     for(size_t i = 0; i < server->namespacesSize; ++i) {
         if(!UA_String_equal(&server->namespaces[i], &newNamespaces[i]))
@@ -547,25 +547,29 @@ readMonitoredItems(UA_Server *server, const UA_NodeId *sessionId, void *sessionC
                    void *objectContext, size_t inputSize,
                    const UA_Variant *input, size_t outputSize,
                    UA_Variant *output) {
+    UA_LOCK(server->serviceMutex);
     UA_Session *session = UA_SessionManager_getSessionById(&server->sessionManager, sessionId);
+    UA_UNLOCK(server->serviceMutex);
     if(!session)
         return UA_STATUSCODE_BADINTERNALERROR;
     if (inputSize == 0 || !input[0].data)
         return UA_STATUSCODE_BADSUBSCRIPTIONIDINVALID;
     UA_UInt32 subscriptionId = *((UA_UInt32*)(input[0].data));
+    UA_LOCK(server->serviceMutex);
     UA_Subscription* subscription = UA_Session_getSubscriptionById(session, subscriptionId);
+    UA_UNLOCK(server->serviceMutex);
     if(!subscription)
     {
         if(LIST_EMPTY(&session->serverSubscriptions))
         {
-          UA_Variant_setArray(&output[0], UA_Array_new(0, &UA_TYPES[UA_TYPES_UINT32]), 
+          UA_Variant_setArray(&output[0], UA_Array_new(0, &UA_TYPES[UA_TYPES_UINT32]),
                               0, &UA_TYPES[UA_TYPES_UINT32]);
-          UA_Variant_setArray(&output[1], UA_Array_new(0, &UA_TYPES[UA_TYPES_UINT32]), 
+          UA_Variant_setArray(&output[1], UA_Array_new(0, &UA_TYPES[UA_TYPES_UINT32]),
                               0, &UA_TYPES[UA_TYPES_UINT32]);
 
           return UA_STATUSCODE_BADNOMATCH;
         }
-        
+
         return UA_STATUSCODE_BADSUBSCRIPTIONIDINVALID;
     }
 
@@ -899,11 +903,13 @@ UA_Server_initNS0(UA_Server *server) {
                                &maxBrowseContinuationPoints, &UA_TYPES[UA_TYPES_UINT16]);
 
     /* ServerProfileArray */
-    UA_String profileArray[2];
+    UA_String profileArray[3];
     UA_UInt16 profileArraySize = 0;
 #define ADDPROFILEARRAY(x) profileArray[profileArraySize++] = UA_STRING(x)
     ADDPROFILEARRAY("http://opcfoundation.org/UA-Profile/Server/MicroEmbeddedDevice");
-
+#ifdef UA_ENABLE_NODEMANAGEMENT
+    ADDPROFILEARRAY("http://opcfoundation.org/UA-Profile/Server/NodeManagement");
+#endif
 #ifdef UA_ENABLE_METHODCALLS
     ADDPROFILEARRAY("http://opcfoundation.org/UA-Profile/Server/Methods");
 #endif
@@ -983,9 +989,10 @@ UA_Server_initNS0(UA_Server *server) {
     UA_Server_deleteNode(server, UA_NODEID_NUMERIC(0, UA_NS0ID_SERVER_SERVERDIAGNOSTICS_SAMPLINGINTERVALDIAGNOSTICSARRAY), true);
     UA_Server_deleteNode(server, UA_NODEID_NUMERIC(0, UA_NS0ID_SERVER_SERVERDIAGNOSTICS_SESSIONSDIAGNOSTICSSUMMARY), true);
 
-    /* Removing these NodeIds make Server Object to be non-complaint with UA 1.03  in CTT (Base Inforamtion/Base Info Core Structure/ 001.js)*/
-    //UA_Server_deleteNode(server, UA_NODEID_NUMERIC(0, UA_NS0ID_SERVER_SERVERDIAGNOSTICS_SERVERDIAGNOSTICSSUMMARY), true);
-    //UA_Server_deleteNode(server, UA_NODEID_NUMERIC(0, UA_NS0ID_SERVER_SERVERDIAGNOSTICS_SUBSCRIPTIONDIAGNOSTICSARRAY), true);
+    /* Removing these NodeIds make Server Object to be non-complaint with UA 1.03  in CTT (Base Inforamtion/Base Info Core Structure/ 001.js)
+     * In the 1.04 specification this has been resolved by allowing to remove these static nodes as well */
+    UA_Server_deleteNode(server, UA_NODEID_NUMERIC(0, UA_NS0ID_SERVER_SERVERDIAGNOSTICS_SERVERDIAGNOSTICSSUMMARY), true);
+    UA_Server_deleteNode(server, UA_NODEID_NUMERIC(0, UA_NS0ID_SERVER_SERVERDIAGNOSTICS_SUBSCRIPTIONDIAGNOSTICSARRAY), true);
 #endif
 
 #ifndef UA_ENABLE_HISTORIZING

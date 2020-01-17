@@ -144,9 +144,10 @@ removeSubscription(void) {
 
     UA_DeleteSubscriptionsResponse deleteSubscriptionsResponse;
     UA_DeleteSubscriptionsResponse_init(&deleteSubscriptionsResponse);
-
+    UA_LOCK(server->serviceMutex);
     Service_DeleteSubscriptions(server, &server->adminSession, &deleteSubscriptionsRequest,
                                 &deleteSubscriptionsResponse);
+    UA_UNLOCK(server->serviceMutex);
     UA_DeleteSubscriptionsResponse_deleteMembers(&deleteSubscriptionsResponse);
 }
 
@@ -382,6 +383,54 @@ START_TEST(generateEvents) {
     ck_assert_uint_eq(*(deleteResponse.results), UA_STATUSCODE_GOOD);
 
     UA_DeleteMonitoredItemsResponse_deleteMembers(&deleteResponse);
+} END_TEST
+
+static bool hasBaseModelChangeEventType(void) {
+
+    UA_QualifiedName readBrowsename;
+    UA_QualifiedName_init(&readBrowsename);
+    UA_StatusCode retval = UA_Server_readBrowseName(server, UA_NODEID_NUMERIC(0, UA_NS0ID_BASEMODELCHANGEEVENTTYPE), &readBrowsename);
+    UA_QualifiedName_deleteMembers(&readBrowsename);
+    return !(retval == UA_STATUSCODE_BADNODEIDUNKNOWN);
+}
+
+START_TEST(createAbstractEvent) {
+    if (!hasBaseModelChangeEventType())
+        return;
+
+    UA_NodeId eventNodeId = UA_NODEID_NULL;
+    UA_NodeId abstractEventType = UA_NODEID_NUMERIC(0, UA_NS0ID_BASEMODELCHANGEEVENTTYPE);
+    serverMutexLock();
+    UA_StatusCode retval = UA_Server_createEvent(server, abstractEventType, &eventNodeId);
+    serverMutexUnlock();
+    ck_assert_uint_eq(retval, UA_STATUSCODE_GOOD);
+} END_TEST
+
+START_TEST(createAbstractEventWithParent) {
+    if (!hasBaseModelChangeEventType())
+        return;
+    UA_NodeId eventNodeId = UA_NODEID_NULL;
+    UA_NodeId abstractEventType = UA_NODEID_NUMERIC(0, UA_NS0ID_BASEMODELCHANGEEVENTTYPE);
+    serverMutexLock();
+    // createEvent does not use a parent, so we are instead using addObjectNode
+    UA_StatusCode retval = UA_Server_addObjectNode(server, UA_NODEID_NULL, UA_NODEID_NUMERIC(0, UA_NS0ID_SERVER),
+                                                   UA_NODEID_NUMERIC(0, UA_NS0ID_HASCOMPONENT),
+                                                   UA_QUALIFIEDNAME(0, "Abstract Event"), abstractEventType,
+                                                   UA_ObjectAttributes_default, NULL, &eventNodeId);
+    serverMutexUnlock();
+    ck_assert_uint_eq(retval, UA_STATUSCODE_BADTYPEDEFINITIONINVALID);
+} END_TEST
+
+START_TEST(createNonAbstractEventWithParent) {
+    UA_NodeId eventNodeId = UA_NODEID_NULL;
+    serverMutexLock();
+    // Our SimpleEventType is not abstract
+    UA_StatusCode retval = UA_Server_addObjectNode(server, UA_NODEID_NULL, UA_NODEID_NUMERIC(0, UA_NS0ID_SERVER),
+                                                   UA_NODEID_NUMERIC(0, UA_NS0ID_HASCOMPONENT),
+                                                   UA_QUALIFIEDNAME(0, "Non-Abstract Event"), eventType,
+                                                   UA_ObjectAttributes_default, NULL, &eventNodeId);
+    serverMutexUnlock();
+    ck_assert_uint_eq(retval, UA_STATUSCODE_GOOD);
 } END_TEST
 
 static void
@@ -625,6 +674,9 @@ static Suite *testSuite_Client(void) {
     tcase_add_unchecked_fixture(tc_server, setup, teardown);
     tcase_add_test(tc_server, generateEventEmptyFilter);
     tcase_add_test(tc_server, generateEvents);
+    tcase_add_test(tc_server, createAbstractEvent);
+    tcase_add_test(tc_server, createAbstractEventWithParent);
+    tcase_add_test(tc_server, createNonAbstractEventWithParent);
     tcase_add_test(tc_server, uppropagation);
     tcase_add_test(tc_server, eventOverflow);
     tcase_add_test(tc_server, multipleMonitoredItemsOneNode);

@@ -1,29 +1,18 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# This Source Code Form is subject to the terms of the Mozilla Public
-# License, v. 2.0. If a copy of the MPL was not distributed with this
-# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+### This Source Code Form is subject to the terms of the Mozilla Public
+### License, v. 2.0. If a copy of the MPL was not distributed with this
+### file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-###
-### Authors:
-### - Chris Iatrou (ichrispa@core-vector.net)
-### - Julius Pfrommer
-### - Stefan Profanter (profanter@fortiss.org)
-###
-### This program was created for educational purposes and has been
-### contributed to the open62541 project by the author. All licensing
-### terms for this source is inherited by the terms and conditions
-### specified for by the open62541 project (see the projects readme
-### file for more information on the MPLv2 terms and restrictions).
-###
-### This program is not meant to be used in a production environment. The
-### author is not liable for any complications arising due to the use of
-### this program.
-###
+###    Copyright 2014-2015 (c) TU-Dresden (Author: Chris Iatrou)
+###    Copyright 2014-2017 (c) Fraunhofer IOSB (Author: Julius Pfrommer)
+###    Copyright 2016-2017 (c) Stefan Profanter, fortiss GmbH
+
 
 import logging
 import argparse
+import sys
 from datatypes import NodeId
 from nodeset import *
 
@@ -91,6 +80,9 @@ parser.add_argument('--backend',
 args = parser.parse_args()
 
 # Set up logging
+# By default logging outputs to stderr. We want to redirect it to stdout, otherwise build output from cmake
+# is in stdout and nodeset compiler in stderr
+logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 verbosity = 0
@@ -107,6 +99,8 @@ elif (verbosity >= 4):
 else:
     logging.basicConfig(level=logging.CRITICAL)
 
+# Set up logging
+logger = logging.getLogger(__name__)
 # Create a new nodeset. The nodeset name is not significant.
 # Parse the XML files
 ns = NodeSet()
@@ -171,14 +165,6 @@ for ignoreFile in args.ignoreFiles:
 # Remove nodes that are not printable or contain parsing errors, such as
 # unresolvable or no references or invalid NodeIDs
 ns.sanitize()
-
-
-# Parse Datatypes in order to find out what the XML keyed values actually
-# represent.
-# Ex. <rpm>123</rpm> is not encodable
-#     only after parsing the datatypes, it is known that
-#     rpm is encoded as a double
-ns.buildEncodingRules()
 
 # Allocate/Parse the data values. In order to do this, we must have run
 # buidEncodingRules.

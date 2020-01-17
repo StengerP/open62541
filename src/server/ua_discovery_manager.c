@@ -156,12 +156,14 @@ UA_DiscoveryManager_deleteMembers(UA_DiscoveryManager *dm, UA_Server *server) {
     registeredServer_list_entry *rs, *rs_tmp;
     LIST_FOREACH_SAFE(rs, &dm->registeredServers, pointers, rs_tmp) {
         LIST_REMOVE(rs, pointers);
-        UA_RegisteredServer_deleteMembers(&rs->registeredServer);
+        UA_RegisteredServer_clear(&rs->registeredServer);
         UA_free(rs);
     }
     periodicServerRegisterCallback_entry *ps, *ps_tmp;
     LIST_FOREACH_SAFE(ps, &dm->periodicServerRegisterCallbacks, pointers, ps_tmp) {
         LIST_REMOVE(ps, pointers);
+        if (ps->callback->discovery_server_url)
+            UA_free(ps->callback->discovery_server_url);
         UA_free(ps->callback);
         UA_free(ps);
     }
@@ -173,7 +175,7 @@ UA_DiscoveryManager_deleteMembers(UA_DiscoveryManager *dm, UA_Server *server) {
     serverOnNetwork_list_entry *son, *son_tmp;
     LIST_FOREACH_SAFE(son, &dm->serverOnNetwork, pointers, son_tmp) {
         LIST_REMOVE(son, pointers);
-        UA_ServerOnNetwork_deleteMembers(&son->serverOnNetwork);
+        UA_ServerOnNetwork_clear(&son->serverOnNetwork);
         if(son->pathTmp)
             UA_free(son->pathTmp);
         UA_free(son);
